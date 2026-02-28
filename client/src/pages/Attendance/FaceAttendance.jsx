@@ -430,10 +430,10 @@ const FaceAttendance = ({ userEmail, userRole }) => {
               {statusMsg}
             </div>
           )}
-          {/* Register mode hint overlay */}
-          {studentTab === "register" && canCapture && (
+          {/* Register mode hint overlay — always visible on register tab */}
+          {studentTab === "register" && (
             <div className="absolute bottom-0 left-0 right-0 px-4 py-2 text-white text-sm font-semibold bg-purple-600 bg-opacity-80">
-              📸 Position your face in frame, then click Capture
+              📸 Position your face in frame, then click Register below
             </div>
           )}
         </div>
@@ -443,17 +443,22 @@ const FaceAttendance = ({ userEmail, userRole }) => {
           <div className="space-y-4">
             {/* Face status banners */}
             {faceLoaded && myFaceRecord === false && (
-              <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 flex items-start gap-3">
-                <span className="text-2xl">📝</span>
-                <div>
-                  <p className="font-semibold text-blue-800 text-sm">Face not registered yet</p>
-                  <p className="text-blue-700 text-xs mt-1">
-                    Register your face so the system can recognize you.{" "}
-                    <button onClick={() => setStudentTab("register")} className="underline font-semibold">
-                      Go to Register My Face →
-                    </button>
-                  </p>
+              <div className="bg-blue-50 border border-blue-200 rounded-xl p-5 space-y-3">
+                <div className="flex items-start gap-3">
+                  <span className="text-2xl">📝</span>
+                  <div>
+                    <p className="font-semibold text-blue-800 text-sm">Face not registered yet</p>
+                    <p className="text-blue-700 text-xs mt-1">
+                      Register your face so the system can recognize you for attendance.
+                    </p>
+                  </div>
                 </div>
+                <button
+                  onClick={() => setStudentTab("register")}
+                  className="w-full py-2.5 rounded-lg bg-purple-600 text-white font-semibold text-sm hover:bg-purple-700 active:scale-95 transition"
+                >
+                  🙂 Register My Face Now →
+                </button>
               </div>
             )}
 
@@ -470,17 +475,22 @@ const FaceAttendance = ({ userEmail, userRole }) => {
             )}
 
             {faceLoaded && myFaceRecord?.approvalStatus === "rejected" && (
-              <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex items-start gap-3">
-                <span className="text-2xl">❌</span>
-                <div>
-                  <p className="font-semibold text-red-800 text-sm">Registration rejected</p>
-                  <p className="text-red-700 text-xs mt-1">
-                    Reason: {myFaceRecord.rejectedReason}.{" "}
-                    <button onClick={() => setStudentTab("register")} className="underline font-semibold">
-                      Re-register →
-                    </button>
-                  </p>
+              <div className="bg-red-50 border border-red-200 rounded-xl p-5 space-y-3">
+                <div className="flex items-start gap-3">
+                  <span className="text-2xl">❌</span>
+                  <div>
+                    <p className="font-semibold text-red-800 text-sm">Registration rejected</p>
+                    <p className="text-red-700 text-xs mt-1">
+                      Reason: {myFaceRecord.rejectedReason}
+                    </p>
+                  </div>
                 </div>
+                <button
+                  onClick={() => setStudentTab("register")}
+                  className="w-full py-2.5 rounded-lg bg-purple-600 text-white font-semibold text-sm hover:bg-purple-700 active:scale-95 transition"
+                >
+                  🔄 Re-register My Face →
+                </button>
               </div>
             )}
 
@@ -522,7 +532,48 @@ const FaceAttendance = ({ userEmail, userRole }) => {
         {/* ── TAB: REGISTER MY FACE ────────────────────────────────── */}
         {studentTab === "register" && (
           <div className="space-y-4">
-            {/* Roll number fallback */}
+
+            {/* ── PROMINENT REGISTER BUTTON — shown immediately when student can capture ── */}
+            {userStudent && canCapture && (
+              <div className="space-y-3">
+                {captureMsg && (
+                  <div className={`border rounded-xl p-3 text-sm ${captureMsgColor[captureMsgType]}`}>
+                    {captureMsg}
+                  </div>
+                )}
+                <button
+                  onClick={captureMyFace}
+                  disabled={capturing || !modelsReady || !cameraReady}
+                  className={`w-full py-4 rounded-2xl text-white font-bold transition text-lg shadow-lg ${
+                    capturing || !modelsReady || !cameraReady
+                      ? "bg-gray-400 cursor-not-allowed"
+                      : "bg-purple-600 hover:bg-purple-700 active:scale-95"
+                  }`}
+                >
+                  {!modelsReady
+                    ? "⏳ Loading face models…"
+                    : !cameraReady
+                    ? "⏳ Starting camera…"
+                    : capturing
+                    ? "🔄 Capturing…"
+                    : myFaceRecord?.approvalStatus === "rejected"
+                    ? "🔄 Re-register My Face"
+                    : "📸 Register My Face"}
+                </button>
+                <p className="text-center text-xs text-gray-400">
+                  Look straight at the camera above, then click the button
+                </p>
+              </div>
+            )}
+
+            {/* Loading face status */}
+            {userStudent && (myFaceRecord === undefined || loadingFaceRec) && (
+              <div className="text-center py-4 text-gray-400 text-sm animate-pulse">
+                Checking face registration status…
+              </div>
+            )}
+
+            {/* Roll number fallback — student record not linked to email */}
             {!userStudent && students.length > 0 && (
               <div className="bg-white rounded-2xl shadow p-5 space-y-4">
                 <div className="text-center">
@@ -564,9 +615,9 @@ const FaceAttendance = ({ userEmail, userRole }) => {
               </div>
             )}
 
-            {/* Student profile + status */}
-            {userStudent && (
-              <div className="bg-white rounded-2xl shadow p-5 space-y-4">
+            {/* Student profile card — name, status, details */}
+            {userStudent && faceLoaded && (
+              <div className="bg-white rounded-2xl shadow p-5 space-y-3">
                 <div className="flex items-center justify-between flex-wrap gap-2">
                   <div>
                     <p className="font-bold text-gray-800 text-lg">{userStudent.name}</p>
@@ -574,9 +625,7 @@ const FaceAttendance = ({ userEmail, userRole }) => {
                       Roll: {userStudent.rollNumber} · Class: {userStudent.studentClass}
                     </p>
                   </div>
-                  {loadingFaceRec || myFaceRecord === undefined ? (
-                    <span className="text-xs text-gray-400 animate-pulse">Checking…</span>
-                  ) : myFaceRecord ? (
+                  {myFaceRecord ? (
                     <StatusBadge status={myFaceRecord.approvalStatus} />
                   ) : (
                     <span className="inline-block px-3 py-1 rounded-full text-xs font-bold bg-gray-100 text-gray-600">
@@ -585,17 +634,15 @@ const FaceAttendance = ({ userEmail, userRole }) => {
                   )}
                 </div>
 
-                {/* Status details */}
-                {faceLoaded && myFaceRecord && (
+                {/* Status-specific info */}
+                {myFaceRecord && (
                   <div className="text-xs text-gray-500 space-y-1 border-t pt-3">
                     <p>
                       <span className="font-semibold">Registered on:</span>{" "}
                       {new Date(myFaceRecord.registeredAt).toLocaleString()}
                     </p>
                     {myFaceRecord.approvalStatus === "approved" && (
-                      <p>
-                        <span className="font-semibold">Approved by:</span> {myFaceRecord.approvedBy}
-                      </p>
+                      <p><span className="font-semibold">Approved by:</span> {myFaceRecord.approvedBy}</p>
                     )}
                     {myFaceRecord.approvalStatus === "rejected" && (
                       <div className="mt-2 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700">
@@ -610,12 +657,12 @@ const FaceAttendance = ({ userEmail, userRole }) => {
                   </div>
                 )}
 
-                {/* Approved */}
-                {faceLoaded && myFaceRecord?.approvalStatus === "approved" && (
+                {/* Approved → nudge to attend tab */}
+                {myFaceRecord?.approvalStatus === "approved" && (
                   <div className="bg-green-50 border border-green-200 rounded-xl p-4 text-center">
                     <div className="text-3xl mb-1">🎉</div>
                     <p className="text-green-800 font-semibold text-sm">
-                      Face approved! Switch to Mark Attendance to use face recognition.
+                      Face approved! Use Mark Attendance to check in.
                     </p>
                     <button
                       onClick={() => setStudentTab("attend")}
@@ -626,47 +673,12 @@ const FaceAttendance = ({ userEmail, userRole }) => {
                   </div>
                 )}
 
-                {/* Pending */}
-                {faceLoaded && myFaceRecord?.approvalStatus === "pending" && (
+                {/* Pending → waiting message */}
+                {myFaceRecord?.approvalStatus === "pending" && (
                   <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4 text-center">
                     <p className="text-yellow-800 text-sm font-medium">
-                      Your registration is pending warden approval. Please wait.
+                      ⏳ Your registration is pending warden approval. Please wait.
                     </p>
-                  </div>
-                )}
-
-                {/* ── Capture (not registered or rejected) ── */}
-                {canCapture && (
-                  <div className="space-y-3 border-t pt-4">
-                    {myFaceRecord?.approvalStatus === "rejected" && (
-                      <p className="text-sm text-gray-600">
-                        Registration was rejected. Re-capture your face below.
-                      </p>
-                    )}
-
-                    {captureMsg && (
-                      <div className={`border rounded-xl p-3 text-sm ${captureMsgColor[captureMsgType]}`}>
-                        {captureMsg}
-                      </div>
-                    )}
-
-                    <button
-                      onClick={captureMyFace}
-                      disabled={capturing || !modelsReady || !cameraReady}
-                      className={`w-full py-3 rounded-lg text-white font-semibold transition text-base ${
-                        capturing || !modelsReady || !cameraReady
-                          ? "bg-gray-400 cursor-not-allowed"
-                          : "bg-purple-600 hover:bg-purple-700 active:scale-95"
-                      }`}
-                    >
-                      {!modelsReady
-                        ? "⏳ Loading models…"
-                        : !cameraReady
-                        ? "⏳ Starting camera…"
-                        : capturing
-                        ? "Capturing…"
-                        : "📸 Capture My Face"}
-                    </button>
                   </div>
                 )}
               </div>
