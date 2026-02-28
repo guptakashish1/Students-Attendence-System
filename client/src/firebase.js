@@ -51,10 +51,15 @@ async function addStudent(student) {
     name: student.name,
     rollNumber: student.rollNumber,
     studentClass: student.studentClass,
+    classArm: student.classArm || "",
     fatherName: student.fatherName || "",
     motherName: student.motherName || "",
     contact: student.contact || "",
+    studentEmail: student.studentEmail || "",
     parentEmail: student.parentEmail || "",
+    parentContact: student.parentContact || "",
+    permanentAddress: student.permanentAddress || "",
+    residenceType: student.residenceType || "day-scholar",
     telegramChatId: student.telegramChatId || "",
     parentTelegramChatId: student.parentTelegramChatId || "",
   });
@@ -64,13 +69,73 @@ function listenRegisteredStudents(callback) {
   const studentsRef = ref(db, "students");
   return onValue(studentsRef, (snapshot) => {
     const data = snapshot.val() || {};
-    callback(Object.values(data));
+    console.log("📊 Raw student data from Firebase:", data);
+    const studentsArray = Object.values(data);
+    console.log("👥 Students array:", studentsArray.length, "students");
+    if (studentsArray.length > 0) {
+      console.log("📝 Sample student:", studentsArray[0]);
+    }
+    callback(studentsArray);
   });
 }
 
 async function deleteStudent(rollNumber) {
-  const studentRef = ref(db, `students/${rollNumber}`);
-  await remove(studentRef);
+  try {
+    if (!rollNumber) {
+      throw new Error("Roll number is required for deletion!");
+    }
+    
+    // Trim and clean the roll number
+    const cleanRollNumber = String(rollNumber).trim();
+    console.log("🗑️ Deleting student with roll number:", cleanRollNumber);
+    
+    // First, try direct path
+    let studentRef = ref(db, `students/${cleanRollNumber}`);
+    let snapshot = await get(studentRef);
+    
+    if (snapshot.exists()) {
+      console.log("📋 Student found at direct path, deleting...");
+      await remove(studentRef);
+      console.log(`✅ Student ${cleanRollNumber} deleted successfully`);
+      return;
+    }
+    
+    // If not found, search through all students
+    console.log("🔍 Student not found at direct path, searching all students...");
+    const allStudentsRef = ref(db, "students");
+    const allSnapshot = await get(allStudentsRef);
+    
+    if (!allSnapshot.exists()) {
+      throw new Error("No students found in database");
+    }
+    
+    const allStudents = allSnapshot.val();
+    console.log("📊 Total students in database:", Object.keys(allStudents).length);
+    
+    // Find the student by rollNumber field
+    let foundKey = null;
+    for (const [key, student] of Object.entries(allStudents)) {
+      if (student.rollNumber === cleanRollNumber || student.id === cleanRollNumber) {
+        foundKey = key;
+        console.log("✅ Found student at key:", key);
+        break;
+      }
+    }
+    
+    if (!foundKey) {
+      console.error("❌ Student not found. Available roll numbers:", 
+        Object.values(allStudents).map(s => s.rollNumber || s.id).join(", "));
+      throw new Error(`Student with roll number ${cleanRollNumber} not found in database`);
+    }
+    
+    // Delete using the found key
+    studentRef = ref(db, `students/${foundKey}`);
+    await remove(studentRef);
+    console.log(`✅ Student ${cleanRollNumber} deleted successfully from key ${foundKey}`);
+  } catch (error) {
+    console.error("❌ Error deleting student:", error);
+    throw error;
+  }
 }
 
 async function updateStudent(rollNumber, updatedData) {
@@ -543,6 +608,28 @@ async function verifyDailyToken(date, token) {
   return stored && stored === token;
 }
 
+// ─── CLASS-SPECIFIC QR TOKEN ───
+function _classSlug(cls) {
+  return cls.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+}
+
+async function generateClassDailyToken(date, className) {
+  const slug = _classSlug(className);
+  const tokenRef = ref(db, `qrClassTokens/${date}/${slug}`);
+  const snap = await get(tokenRef);
+  if (snap.exists()) return snap.val().token;
+  const token = generateTokenString();
+  await set(tokenRef, { token, date, className, slug, createdAt: new Date().toISOString() });
+  return token;
+}
+
+async function verifyClassDailyToken(date, className, token) {
+  const slug = _classSlug(className);
+  const tokenRef = ref(db, `qrClassTokens/${date}/${slug}`);
+  const snap = await get(tokenRef);
+  return snap.exists() && snap.val().token === token;
+}
+
 function getTelegramBotUsername() {
   return TELEGRAM_BOT_USERNAME;
 }
@@ -561,6 +648,17 @@ function sendAbsentEmail(student, status, date) {
       date: date,
     },
     "your_public_key" // ⚡ replace
+  );
+}
+
+// ─── LOGIN OTP EMAIL ───
+// ⚡ Create an EmailJS template with variables: {{to_email}} and {{otp}}
+function sendLoginOTPEmail(toEmail, otp) {
+  return emailjs.send(
+    "your_service_id",       // ⚡ replace with your EmailJS Service ID
+    "your_otp_template_id",  // ⚡ replace with your OTP template ID (vars: {{to_email}}, {{otp}})
+    { to_email: toEmail, otp },
+    "your_public_key"        // ⚡ replace with your EmailJS Public Key
   );
 }
 
@@ -588,6 +686,156 @@ async function getAttendanceByMonth(month) {
   return allRecords;
 }
 
+// ─── ATTENDANCE RANGE STATS (for Analytics.jsx charts) ───────────────────
+async function getAttendanceRangeStats(startDate, endDate) {
+  const snap = await get(ref(db, "attendance"));
+  if (!snap.exists()) return { perDay: [], perClassToday: [] };
+
+  const data    = snap.val();
+  const today   = getTodayDate();
+  const perDay  = [];
+  const perClassToday = {};
+
+  Object.keys(data)
+    .filter((d) => d >= startDate && d <= endDate)
+    .sort()
+    .forEach((date) => {
+      const day     = data[date];
+      const present = Object.values(day).filter((r) => r.status === "IN").length;
+      const absent  = Object.values(day).filter((r) => r.status === "ABSENT").length;
+      const leave   = Object.values(day).filter((r) => r.status === "LEAVE").length;
+      perDay.push({ date: date.slice(5), present, absent, leave }); // MM-DD label
+
+      if (date === today) {
+        Object.values(day).forEach((r) => {
+          const cls = r.studentClass || "Unknown";
+          if (!perClassToday[cls]) perClassToday[cls] = { present: 0, absent: 0, leave: 0 };
+          if (r.status === "IN")     perClassToday[cls].present++;
+          if (r.status === "ABSENT") perClassToday[cls].absent++;
+          if (r.status === "LEAVE")  perClassToday[cls].leave++;
+        });
+      }
+    });
+
+  const perClassArr = Object.entries(perClassToday).map(([cls, v]) => ({ class: cls, ...v }));
+  return { perDay, perClassToday: perClassArr };
+}
+
+// ─── FULL ATTENDANCE (for AI Analysis) ────────────────────────────────────
+async function getAllAttendanceRaw() {
+  const snap = await get(ref(db, "attendance"));
+  return snap.exists() ? snap.val() : {};
+}
+
+// ─── FACE DESCRIPTOR STORAGE ──────────────────────────────────────────────
+async function saveFaceDescriptor(rollNumber, descriptorArray, registeredBy) {
+  await set(ref(db, `faceDescriptors/${rollNumber}`), {
+    rollNumber,
+    descriptor: Array.from(descriptorArray),
+    registeredBy: registeredBy || "system",
+    registeredAt: new Date().toISOString(),
+    approvalStatus: "pending", // "pending", "approved", "rejected"
+    approvedBy: null,
+    approvedAt: null,
+    rejectedReason: null,
+    updatedAt: new Date().toISOString(),
+  });
+}
+
+async function getFaceDescriptor(rollNumber) {
+  const snap = await get(ref(db, `faceDescriptors/${rollNumber}`));
+  return snap.exists() ? snap.val() : null;
+}
+
+async function getPendingFaceRegistrations() {
+  const snap = await get(ref(db, "faceDescriptors"));
+  if (!snap.exists()) return [];
+  return Object.values(snap.val()).filter(f => f.approvalStatus === "pending");
+}
+
+async function approveFaceRegistration(rollNumber, approvedBy) {
+  const faceRef = ref(db, `faceDescriptors/${rollNumber}`);
+  const snap = await get(faceRef);
+  if (!snap.exists()) throw new Error("Face descriptor not found");
+  
+  await set(faceRef, {
+    ...snap.val(),
+    approvalStatus: "approved",
+    approvedBy: approvedBy,
+    approvedAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  });
+}
+
+async function rejectFaceRegistration(rollNumber, rejectedBy, reason) {
+  const faceRef = ref(db, `faceDescriptors/${rollNumber}`);
+  const snap = await get(faceRef);
+  if (!snap.exists()) throw new Error("Face descriptor not found");
+  
+  await set(faceRef, {
+    ...snap.val(),
+    approvalStatus: "rejected",
+    approvedBy: rejectedBy,
+    approvedAt: new Date().toISOString(),
+    rejectedReason: reason,
+    updatedAt: new Date().toISOString(),
+  });
+}
+
+async function getApprovedFaceDescriptors() {
+  const snap = await get(ref(db, "faceDescriptors"));
+  if (!snap.exists()) return [];
+  return Object.values(snap.val()).filter(f => f.approvalStatus === "approved");
+}
+
+async function getAllFaceDescriptors() {
+  const snap = await get(ref(db, "faceDescriptors"));
+  if (!snap.exists()) return [];
+  return Object.values(snap.val());
+}
+
+// ─── GEO SETTINGS ─────────────────────────────────────────────────────────
+async function saveSchoolGeoSettings(lat, lng, radiusMeters) {
+  await set(ref(db, "settings/geoAttendance"), {
+    lat: parseFloat(lat),
+    lng: parseFloat(lng),
+    radiusMeters: parseInt(radiusMeters, 10),
+    updatedAt: new Date().toISOString(),
+  });
+}
+
+async function getSchoolGeoSettings() {
+  const snap = await get(ref(db, "settings/geoAttendance"));
+  return snap.exists() ? snap.val() : null;
+}
+
+// ─── TELEGRAM OTP ─────────────────────────────────────────────────────────
+function _generateOTP() {
+  return String(Math.floor(100000 + Math.random() * 900000));
+}
+
+async function createAndSendOTP(chatId, studentName) {
+  const otp     = _generateOTP();
+  const expiry  = Date.now() + 5 * 60 * 1000; // 5 min TTL
+  await set(ref(db, `otps/${chatId}`), { otp, expiry, studentName });
+  await sendTelegramMessage(
+    chatId,
+    `🔐 *Biometric Attendance OTP*\n\nHi *${studentName}*,\n\nYour one-time code is:\n\n` +
+    `\`${otp}\`\n\n⏱ Valid for *5 minutes*. Do not share this code.`
+  );
+  return otp;
+}
+
+async function verifyAndClearOTP(chatId, enteredOtp) {
+  const snap = await get(ref(db, `otps/${chatId}`));
+  if (!snap.exists()) return { valid: false, reason: "No OTP found" };
+  const { otp, expiry } = snap.val();
+  if (Date.now() > expiry)       return { valid: false, reason: "OTP expired" };
+  if (String(enteredOtp) !== otp) return { valid: false, reason: "Wrong code" };
+  await remove(ref(db, `otps/${chatId}`));
+  return { valid: true };
+}
+
 // ─── ATTENDANCE LISTENER ───
 function listenAttendance(date, callback) {
   const attendanceRef = ref(db, `attendance/${date}`);
@@ -606,10 +854,10 @@ function listenAttendance(date, callback) {
 }
 
 // ─── BROADCAST HISTORY ───
-async function saveBroadcast(message, recipientCount) {
+async function saveBroadcast(message, recipientCount, targetClass = "all") {
   const timestamp = new Date().toISOString();
   const broadcastRef = ref(db, `broadcasts/${Date.now()}`);
-  await set(broadcastRef, { message, recipientCount, timestamp });
+  await set(broadcastRef, { message, recipientCount, targetClass, timestamp });
 }
 
 function listenBroadcasts(callback) {
@@ -650,6 +898,31 @@ function listenCollection(path, callback) {
   });
 }
 
+// ─── USER ROLE MANAGEMENT ───
+async function saveUserRole(uid, userData) {
+  if (!uid) throw new Error("User ID is required!");
+  const userRef = ref(db, `users/${uid}`);
+  
+  // Save or update user data
+  await set(userRef, {
+    uid: uid,
+    email: userData.email || "",
+    name: userData.name || "",
+    role: userData.role || "student",
+    createdAt: userData.createdAt || new Date().toISOString(),
+  });
+}
+
+async function getUserRole(uid) {
+  if (!uid) return null;
+  const userRef = ref(db, `users/${uid}`);
+  const snapshot = await get(userRef);
+  if (snapshot.exists()) {
+    return snapshot.val();
+  }
+  return null;
+}
+
 // ─── EXPORTS ───
 export {
   db,
@@ -674,9 +947,27 @@ export {
   generateDailyToken,
   getDailyToken,
   verifyDailyToken,
+  generateClassDailyToken,
+  verifyClassDailyToken,
   getTelegramBotUsername,
   verifyTelegramInitData,
   logBotInteraction,
   listenBotLogs,
   getCommandStats,
+  getAttendanceRangeStats,
+  getAllAttendanceRaw,
+  saveFaceDescriptor,
+  getFaceDescriptor,
+  getPendingFaceRegistrations,
+  approveFaceRegistration,
+  rejectFaceRegistration,
+  getApprovedFaceDescriptors,
+  getAllFaceDescriptors,
+  saveSchoolGeoSettings,
+  getSchoolGeoSettings,
+  createAndSendOTP,
+  verifyAndClearOTP,
+  saveUserRole,
+  getUserRole,
+  sendLoginOTPEmail,
 };

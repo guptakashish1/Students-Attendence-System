@@ -1,79 +1,108 @@
-import React, { useState } from 'react';
-import { useDispatch} from "react-redux";
-import { collection, addDoc, getDocs } from "firebase/firestore"
-import { db } from '../firebase-config';
-import { setStudents, setAlertBox } from '../store';
-import AlertComponent from './AlertComponent';
+import React, { useEffect, useState } from "react";
+import { listenRegisteredStudents, markAttendance, getTodayDate } from "../firebase";
 
-const MarkPresent = () => {
-    const [rollNumber, setRollNumber] = useState('');
-    const [name, setName] = useState('');
-    const dispatch = useDispatch();
+const MarkAttendance = () => {
+  const [students, setStudents] = useState([]);
+  const [markedStatus, setMarkedStatus] = useState({});
+  const today = getTodayDate();
 
-    const handleSubmit = async (e) => {
+  useEffect(() => {
+    const unsubscribe = listenRegisteredStudents((data) => {
+      setStudents(data);
+    });
+    return () => unsubscribe && unsubscribe();
+  }, []);
 
-        e.preventDefault();
-        if (name==="" || rollNumber === "") {
-            dispatch(setAlertBox({ title: "Empty Fields", message: "All the Fields are required!", color: "orange", show: true }))
-            console.log(name, rollNumber)
-            // console.log(title, message, show);
-        }
+  const handleMark = async (student, value) => {
+    try {
+      let mapped = "";
+      if (value === "Present") mapped = "IN";
+      else if (value === "Checkout") mapped = "CHECKOUT";
+      else if (value === "Absent") mapped = "ABSENT";
+      else if (value === "Leave") mapped = "LEAVE";
 
-        // Student Referance for the firebase DB
-        else {
-            const studentRef = collection(db, 'students')
-            try {
-                // Here we are adding the students to the firebase database
-                const response = await addDoc(studentRef, { rollNumber, name, checkin: new Date(new Date().getTime()).toLocaleTimeString(), checkout: "" })
-                console.log(response)
-                setRollNumber('');
-                setName('');
+      await markAttendance(student, today, mapped);
 
-                // We are fetching the updated data from the firebase db
-                const students = await getDocs(studentRef)
-                const student = students.docs.map(doc => ({
-                    data: doc.data(),
-                    id: doc.id
-                }))
-                dispatch(setStudents(student))
-                dispatch(setAlertBox({ title: "Attendance Marked", message:`${name}'s Attendance is Marked`, color:"teal", show: true }))
-            } catch (error) {
-                dispatch(setAlertBox({ title: "Error!", message:`error.message`, color:"red", show: true }))
-                console.log(error);
-            }
-        }
-    };
+      setMarkedStatus((prev) => ({
+        ...prev,
+        [student.rollNumber]: value,
+      }));
+    } catch (error) {
+      console.error("❌ Error marking attendance:", error);
+    }
+  };
 
-    return (
-        <>
-        <AlertComponent></AlertComponent>
-            <div className="flex justify-center min-h-screen items-center flex-wrap">
-                <div className="w-full max-w-xs">
-                    <form className="bg-white shadow-2xl shadow-purple-300 rounded px-8 pt-6 pb-8 mb-4" method="POST" autoComplete="off" onSubmit={handleSubmit}>
-                        <h1 className='text-2xl font-bold mb-6 text-purple-400 text-center'>Enter Present Student Details</h1>
-                        <div className="mb-4">
-                            <label className="block text-gray-700 text-sm font-bold mb-2" htmlFor="username">
-                                Student Full Name
-                            </label>
-                            <input className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" id="username" type="text" placeholder="Student Name" value={name} onChange={(e) => setName(e.target.value)} />
-                        </div>
-                        <div className="mb-6">
-                            <label className="block text-gray-700 text-sm font-bold mb-2" htmlFor="rollNumber">
-                                Roll Number
-                            </label>
-                            <input className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" id="rollNumber" type="text" value={rollNumber} placeholder="Enter Roll Number" onChange={(e) => setRollNumber(e.target.value)} />
-                        </div>
-                        <div className="flex items-center justify-between">
-                            <button className="bg-purple-500 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline" type="submit">
-                                Add Student
-                            </button>
-                        </div>
-                    </form>
-                </div>
+  return (
+    <div className="max-w-6xl mx-auto bg-white shadow-xl p-6 rounded-xl mt-10">
+      <h2 className="text-3xl font-bold mb-6 text-center text-purple-700">
+        Mark Attendance - {today}
+      </h2>
 
-            </div>
-        </>
-    );
+      <table className="w-full border-collapse border">
+        <thead>
+          <tr className="bg-purple-600 text-white">
+            <th className="border p-2">Roll No</th>
+            <th className="border p-2">Name</th>
+            <th className="border p-2">Class</th>
+            <th className="border p-2">Actions</th>
+            <th className="border p-2">Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {students.length > 0 ? (
+            students.map((s) => (
+              <tr key={s.rollNumber} className="text-center">
+                <td className="border p-2">{s.rollNumber}</td>
+                <td className="border p-2">{s.name}</td>
+                <td className="border p-2">{s.studentClass}</td>
+                <td className="border p-2 space-x-2">
+                  <button
+                    onClick={() => handleMark(s, "Present")}
+                    className="bg-green-500 text-white px-3 py-1 rounded"
+                  >
+                    Present
+                  </button>
+                  <button
+                    onClick={() => handleMark(s, "Checkout")}
+                    className="bg-blue-500 text-white px-3 py-1 rounded"
+                  >
+                    Checkout
+                  </button>
+                  <button
+                    onClick={() => handleMark(s, "Absent")}
+                    className="bg-red-500 text-white px-3 py-1 rounded"
+                  >
+                    Absent
+                  </button>
+                  <button
+                    onClick={() => handleMark(s, "Leave")}
+                    className="bg-yellow-500 text-white px-3 py-1 rounded"
+                  >
+                    Leave
+                  </button>
+                </td>
+                <td className="border p-2">
+                  {markedStatus[s.rollNumber] ? (
+                    <span className="font-medium text-purple-600">
+                      ✅ {markedStatus[s.rollNumber]}
+                    </span>
+                  ) : (
+                    "-"
+                  )}
+                </td>
+              </tr>
+            ))
+          ) : (
+            <tr>
+              <td colSpan="5" className="text-center p-4 text-gray-500">
+                No registered students found
+              </td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+    </div>
+  );
 };
 
-export default MarkPresent;
+export default MarkAttendance;
