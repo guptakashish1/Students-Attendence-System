@@ -533,45 +533,64 @@ const FaceAttendance = ({ userEmail, userRole }) => {
         {studentTab === "register" && (
           <div className="space-y-4">
 
-            {/* ── PROMINENT REGISTER BUTTON — shown immediately when student can capture ── */}
-            {userStudent && canCapture && (
-              <div className="space-y-3">
-                {captureMsg && (
-                  <div className={`border rounded-xl p-3 text-sm ${captureMsgColor[captureMsgType]}`}>
-                    {captureMsg}
-                  </div>
-                )}
-                <button
-                  onClick={captureMyFace}
-                  disabled={capturing || !modelsReady || !cameraReady}
-                  className={`w-full py-4 rounded-2xl text-white font-bold transition text-lg shadow-lg ${
-                    capturing || !modelsReady || !cameraReady
-                      ? "bg-gray-400 cursor-not-allowed"
-                      : "bg-purple-600 hover:bg-purple-700 active:scale-95"
-                  }`}
-                >
-                  {!modelsReady
-                    ? "⏳ Loading face models…"
-                    : !cameraReady
-                    ? "⏳ Starting camera…"
-                    : capturing
-                    ? "🔄 Capturing…"
-                    : myFaceRecord?.approvalStatus === "rejected"
-                    ? "🔄 Re-register My Face"
-                    : "📸 Register My Face"}
-                </button>
+            {/* ── REGISTER BUTTON — always visible, state-driven label/disabled ── */}
+            <div className="space-y-2">
+              {captureMsg && (
+                <div className={`border rounded-xl p-3 text-sm ${captureMsgColor[captureMsgType]}`}>
+                  {captureMsg}
+                </div>
+              )}
+
+              {/* derive button label and disabled state */}
+              {(() => {
+                const isDisabled =
+                  capturing ||
+                  !modelsReady ||
+                  !cameraReady ||
+                  !userStudent ||
+                  !faceLoaded ||
+                  (myFaceRecord && myFaceRecord.approvalStatus === "pending") ||
+                  (myFaceRecord && myFaceRecord.approvalStatus === "approved");
+
+                const label = !modelsReady
+                  ? "⏳ Loading face models…"
+                  : !cameraReady
+                  ? "⏳ Starting camera…"
+                  : !userStudent
+                  ? "🔍 Find your student record below first"
+                  : loadingFaceRec || myFaceRecord === undefined
+                  ? "⏳ Checking registration status…"
+                  : myFaceRecord?.approvalStatus === "approved"
+                  ? "✅ Face already approved — use Mark Attendance"
+                  : myFaceRecord?.approvalStatus === "pending"
+                  ? "⏳ Awaiting warden approval…"
+                  : capturing
+                  ? "🔄 Capturing…"
+                  : myFaceRecord?.approvalStatus === "rejected"
+                  ? "🔄 Re-register My Face"
+                  : "📸 Register My Face";
+
+                return (
+                  <button
+                    onClick={captureMyFace}
+                    disabled={isDisabled}
+                    className={`w-full py-4 rounded-2xl text-white font-bold transition text-lg shadow-lg ${
+                      isDisabled
+                        ? "bg-gray-400 cursor-not-allowed opacity-80"
+                        : "bg-purple-600 hover:bg-purple-700 active:scale-95"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                );
+              })()}
+
+              {canCapture && userStudent && (
                 <p className="text-center text-xs text-gray-400">
                   Look straight at the camera above, then click the button
                 </p>
-              </div>
-            )}
-
-            {/* Loading face status */}
-            {userStudent && (myFaceRecord === undefined || loadingFaceRec) && (
-              <div className="text-center py-4 text-gray-400 text-sm animate-pulse">
-                Checking face registration status…
-              </div>
-            )}
+              )}
+            </div>
 
             {/* Roll number fallback — student record not linked to email */}
             {!userStudent && students.length > 0 && (
@@ -634,7 +653,6 @@ const FaceAttendance = ({ userEmail, userRole }) => {
                   )}
                 </div>
 
-                {/* Status-specific info */}
                 {myFaceRecord && (
                   <div className="text-xs text-gray-500 space-y-1 border-t pt-3">
                     <p>
@@ -657,29 +675,13 @@ const FaceAttendance = ({ userEmail, userRole }) => {
                   </div>
                 )}
 
-                {/* Approved → nudge to attend tab */}
                 {myFaceRecord?.approvalStatus === "approved" && (
-                  <div className="bg-green-50 border border-green-200 rounded-xl p-4 text-center">
-                    <div className="text-3xl mb-1">🎉</div>
-                    <p className="text-green-800 font-semibold text-sm">
-                      Face approved! Use Mark Attendance to check in.
-                    </p>
-                    <button
-                      onClick={() => setStudentTab("attend")}
-                      className="mt-3 px-4 py-2 rounded-lg bg-green-600 text-white text-sm font-semibold hover:bg-green-700 transition"
-                    >
-                      → Go to Mark Attendance
-                    </button>
-                  </div>
-                )}
-
-                {/* Pending → waiting message */}
-                {myFaceRecord?.approvalStatus === "pending" && (
-                  <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4 text-center">
-                    <p className="text-yellow-800 text-sm font-medium">
-                      ⏳ Your registration is pending warden approval. Please wait.
-                    </p>
-                  </div>
+                  <button
+                    onClick={() => setStudentTab("attend")}
+                    className="w-full py-2.5 rounded-lg bg-green-600 text-white text-sm font-semibold hover:bg-green-700 transition"
+                  >
+                    🎉 Face Approved → Go to Mark Attendance
+                  </button>
                 )}
               </div>
             )}
