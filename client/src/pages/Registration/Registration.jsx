@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import { addStudent } from "../../firebase"; // ✅ your firebase.js function
+import React, { useState, useEffect } from "react";
+import { addStudent, listenCollection } from "../../firebase"; // ✅ your firebase.js function
 
 const CLASS_OPTIONS = [
   "PlayGroup", "Nursery", "KG",
@@ -8,21 +8,48 @@ const CLASS_OPTIONS = [
   "Class IX", "Class X", "Class XI", "Class XII",
 ];
 
+const SECTION_OPTIONS = [
+  "A", "B", "C", "D", "E", "F", "G", "H", "I", "J",
+  "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T",
+  "U", "V", "W", "X", "Y", "Z"
+];
+
 const Registration = () => {
   const [form, setForm] = useState({
     name: "",
     rollNumber: "",
     studentClass: "",
+    classArm: "",
     contact: "",
+    studentEmail: "",
+    permanentAddress: "",
     fatherName: "",
     motherName: "",
     parentEmail: "",
+    parentContact: "",
     telegramChatId: "",
     parentTelegramChatId: "",
+    residenceType: "day-scholar", // hostler or day-scholar
   });
 
+  const [classArms, setClassArms] = useState([]);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
+
+  // Load class arms from Firebase
+  useEffect(() => {
+    const unsub = listenCollection("classArms", setClassArms);
+    return () => unsub();
+  }, []);
+
+  // Get sections for selected class
+  const getSectionsForClass = (className) => {
+    if (!className) return [];
+    return classArms.filter(arm => 
+      arm.className === className || 
+      arm.classId === className
+    );
+  };
 
   // 🔹 Handle input changes
   const handleChange = (e) => {
@@ -45,12 +72,17 @@ const Registration = () => {
         name: "",
         rollNumber: "",
         studentClass: "",
+        classArm: "",
         contact: "",
+        studentEmail: "",
+        permanentAddress: "",
         fatherName: "",
         motherName: "",
         parentEmail: "",
+        parentContact: "",
         telegramChatId: "",
         parentTelegramChatId: "",
+        residenceType: "day-scholar",
       }); // reset form
     } catch (error) {
       setMessage("❌ Error: " + error.message);
@@ -88,7 +120,13 @@ const Registration = () => {
           <select
             name="studentClass"
             value={form.studentClass}
-            onChange={handleChange}
+            onChange={(e) => {
+              setForm({
+                ...form,
+                studentClass: e.target.value,
+                classArm: "" // Reset section when class changes
+              });
+            }}
             className="w-full p-2 border rounded bg-white"
             required
           >
@@ -98,14 +136,98 @@ const Registration = () => {
             ))}
           </select>
 
+          <select
+            name="classArm"
+            value={form.classArm}
+            onChange={handleChange}
+            className="w-full p-2 border rounded bg-white"
+            disabled={!form.studentClass}
+          >
+            <option value="">-- Select Section (Optional) --</option>
+            {SECTION_OPTIONS.map((section) => (
+              <option key={section} value={section}>Section {section}</option>
+            ))}
+          </select>
+          {!form.studentClass && (
+            <p className="text-xs text-gray-500 -mt-2">
+              💡 Select a class first to choose a section
+            </p>
+          )}
+
           <input
+            type="tel"
             name="contact"
             value={form.contact}
-            onChange={handleChange}
+            onChange={(e) => {
+              // Only allow numeric input
+              const value = e.target.value.replace(/[^0-9]/g, '');
+              setForm({ ...form, contact: value });
+            }}
             placeholder="Contact (10 digits)"
             className="w-full p-2 border rounded"
             maxLength={10}
+            pattern="[0-9]{10}"
+            title="Please enter exactly 10 digits"
           />
+
+          <input
+            type="email"
+            name="studentEmail"
+            value={form.studentEmail}
+            onChange={handleChange}
+            placeholder="Student Email"
+            className="w-full p-2 border rounded"
+            required
+          />
+
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-2">
+              Student Permanent Address *
+            </label>
+            <textarea
+              name="permanentAddress"
+              value={form.permanentAddress}
+              onChange={handleChange}
+              placeholder="Enter complete permanent address"
+              className="w-full p-2 border rounded resize-none"
+              rows={3}
+              minLength={10}
+              required
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              {form.permanentAddress.length} characters (minimum 10 required)
+            </p>
+          </div>
+
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-2">
+              Residence Type *
+            </label>
+            <div className="flex gap-4">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="radio"
+                  name="residenceType"
+                  value="day-scholar"
+                  checked={form.residenceType === "day-scholar"}
+                  onChange={handleChange}
+                  className="w-4 h-4 text-purple-600"
+                />
+                <span className="text-sm">🏠 Day Scholar</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="radio"
+                  name="residenceType"
+                  value="hostler"
+                  checked={form.residenceType === "hostler"}
+                  onChange={handleChange}
+                  className="w-4 h-4 text-purple-600"
+                />
+                <span className="text-sm">🏨 Hostler</span>
+              </label>
+            </div>
+          </div>
 
           <input
             name="fatherName"
@@ -130,6 +252,23 @@ const Registration = () => {
             onChange={handleChange}
             placeholder="Father's Email"
             className="w-full p-2 border rounded"
+            required
+          />
+
+          <input
+            type="tel"
+            name="parentContact"
+            value={form.parentContact}
+            onChange={(e) => {
+              // Only allow numeric input
+              const value = e.target.value.replace(/[^0-9]/g, '');
+              setForm({ ...form, parentContact: value });
+            }}
+            placeholder="Parent Contact Number (10 digits)"
+            className="w-full p-2 border rounded"
+            maxLength={10}
+            pattern="[0-9]{10}"
+            title="Please enter exactly 10 digits"
             required
           />
 

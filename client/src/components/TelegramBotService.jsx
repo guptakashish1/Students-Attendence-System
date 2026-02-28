@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import { listenRegisteredStudents, sendTelegramMessage } from "../firebase";
-import { messageQueue } from "../utils/messageQueue";
+import { messageQueue } from "../Utils/messageQueue";
 
 // 📅 Sample Class Schedule
 const CLASS_SCHEDULE = [
